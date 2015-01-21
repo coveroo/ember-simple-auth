@@ -3,10 +3,15 @@ import Session from './session';
 import LocalStorage from './stores/local-storage';
 import Ephemeral from './stores/ephemeral';
 
+var wildcardToken = "WILDCARD_TOKEN";
+
 function extractLocationOrigin(location) {
   if (location === '*'){
       return location;
   }
+
+  location = location.replace('*', wildcardToken);
+
   if (Ember.typeOf(location) === 'string') {
     var link = document.createElement('a');
     link.href = location;
@@ -24,20 +29,45 @@ function extractLocationOrigin(location) {
   return location.protocol + '//' + location.hostname + (port !== '' ? ':' + port : '');
 }
 
+function matchDomain(urlOrigin){
+  return function(domain) {
+    if (domain.indexOf(wildcardToken) > -1) {
+      var domainRegex = new RegExp(domain.replace(wildcardToken , '.+'));
+      return urlOrigin.match(domainRegex);
+    }
+
+    return domain.indexOf(urlOrigin) > -1;
+  };
+}
+
 var urlOrigins     = {};
 var crossOriginWhitelist;
 function shouldAuthorizeRequest(options) {
   if (options.crossDomain === false || crossOriginWhitelist.indexOf('*') > -1) {
     return true;
   }
+
   var urlOrigin = urlOrigins[options.url] = urlOrigins[options.url] || extractLocationOrigin(options.url);
-  return crossOriginWhitelist.indexOf(urlOrigin) > -1;
+  return Ember.A(crossOriginWhitelist).any(matchDomain(urlOrigin));
 }
 
 function registerFactories(container) {
   container.register('simple-auth-session-store:local-storage', LocalStorage);
   container.register('simple-auth-session-store:ephemeral', Ephemeral);
   container.register('simple-auth-session:main', Session);
+}
+
+function ajaxPrefilter(options, originalOptions, jqXHR) {
+  if (shouldAuthorizeRequest(options)) {
+    jqXHR.__simple_auth_authorized__ = true;
+    ajaxPrefilter.authorizer.authorize(jqXHR, options);
+  }
+}
+
+function ajaxError(event, jqXHR, setting, exception) {
+  if (!!jqXHR.__simple_auth_authorized__ && jqXHR.status === 401) {
+    ajaxError.session.trigger('authorizationFailed');
+  }
 }
 
 var didSetupAjaxHooks = false;
@@ -53,7 +83,7 @@ export default function(container, application) {
   var store   = container.lookup(Configuration.store);
   var session = container.lookup(Configuration.session);
   session.setProperties({ store: store, container: container });
-  Ember.A(['controller', 'route']).forEach(function(component) {
+  Ember.A(['controller', 'route', 'component']).forEach(function(component) {
     container.injection(component, Configuration.sessionPropertyName, Configuration.session);
   });
 
@@ -63,22 +93,15 @@ export default function(container, application) {
 
   if (!Ember.isEmpty(Configuration.authorizer)) {
     var authorizer = container.lookup(Configuration.authorizer);
-    if (!!authorizer) {
-      authorizer.set('session', session);
-      if (!didSetupAjaxHooks) {
-        Ember.$.ajaxPrefilter('+*', function(options, originalOptions, jqXHR) {
-          if (!authorizer.isDestroyed && shouldAuthorizeRequest(options)) {
-            jqXHR.__simple_auth_authorized__ = true;
-            authorizer.authorize(jqXHR, options);
-          }
-        });
-        Ember.$(document).ajaxError(function(event, jqXHR, setting, exception) {
-          if (!!jqXHR.__simple_auth_authorized__ && jqXHR.status === 401) {
-            session.trigger('authorizationFailed');
-          }
-        });
-        didSetupAjaxHooks = true;
-      }
+    Ember.assert('The configured authorizer "' + Configuration.authorizer + '" could not be found in the container.', !Ember.isEmpty(authorizer));
+    authorizer.set('session', session);
+    ajaxPrefilter.authorizer = authorizer;
+    ajaxError.session = session;
+
+    if (!didSetupAjaxHooks) {
+      Ember.$.ajaxPrefilter('+*', ajaxPrefilter);
+      Ember.$(document).ajaxError(ajaxError);
+      didSetupAjaxHooks = true;
     }
   } else {
     Ember.Logger.info('No authorizer was configured for Ember Simple Auth - specify one if backend requests need to be authorized.');

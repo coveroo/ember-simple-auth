@@ -65,8 +65,6 @@ export default Base.extend({
   */
   refreshAccessTokens: true,
 
-
-
   /**
     @property _refreshTokenTimeout
     @private
@@ -82,8 +80,6 @@ export default Base.extend({
     this.serverTokenRevocationEndpoint = Configuration.serverTokenRevocationEndpoint;
     this.refreshAccessTokens           = Configuration.refreshAccessTokens;
   },
-
-
 
   /**
     Restores the session from a set of session properties; __will return a
@@ -131,16 +127,23 @@ export default Base.extend({
     @return {Object} An object that contains all data necessary to complete authentication
   */
   authenticateDataProcessor: function(credentials){
-      return {grantType: 'password', username: credentials.identification, password: credentials.password};
+      var data = {grantType: 'password', username: credentials.identification, password: credentials.password};
+      if (!Ember.isEmpty(options.credentials)) {
+        var scopesString = Ember.makeArray(credentials.scope).join(' ');
+        Ember.merge(data, { scope: scopesString });
+      }
+      return data;
   },
 
   /**
-    Authenticates the session with the specified `credentials`; the credentials
-    are send via a _"POST"_ request to the
+    Authenticates the session with the specified `options`; makes a `POST`
+    request to the
     [`Authenticators.OAuth2#serverTokenEndpoint`](#SimpleAuth-Authenticators-OAuth2-serverTokenEndpoint)
-    and if they are valid the server returns an access token in response (see
-    http://tools.ietf.org/html/rfc6749#section-4.3). __If the credentials are
-    valid and authentication succeeds, a promise that resolves with the
+    with the passed credentials and optional scope and receives the token in
+    response (see http://tools.ietf.org/html/rfc6749#section-4.3).
+
+    __If the credentials are valid (and the optionally requested scope is
+    granted) and thus authentication succeeds, a promise that resolves with the
     server's response is returned__, otherwise a promise that rejects with the
     error is returned.
 
@@ -150,13 +153,16 @@ export default Base.extend({
     [`Authenticators.OAuth2#refreshAccessTokens`](#SimpleAuth-Authenticators-OAuth2-refreshAccessTokens)).
 
     @method authenticate
-    @param {Object} credentials The credentials to authenticate the session with
+    @param {Object} options
+    @param {String} options.identification The resource owner username
+    @param {String} options.password The resource owner password
+    @param {String|Array} [options.scope] The scope of the access request (see [RFC 6749, section 3.3](http://tools.ietf.org/html/rfc6749#section-3.3))
     @return {Ember.RSVP.Promise} A promise that resolves when an access token is successfully acquired from the server and rejects otherwise
   */
-  authenticate: function(credentials) {
+  authenticate: function(options) {
     var _this = this;
     return new Ember.RSVP.Promise(function(resolve, reject) {
-      var data = _this.authenticateDataProcessor(credentials);
+      var data = _this.authenticateDataProcessor(options);
       _this.makeRequest(_this.serverTokenEndpoint, data).then(function(response) {
         Ember.run(function() {
           var expiresAt = _this.absolutizeExpirationTime(response.expires_in);

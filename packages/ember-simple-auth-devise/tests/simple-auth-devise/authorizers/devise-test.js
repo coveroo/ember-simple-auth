@@ -40,25 +40,25 @@ describe('Devise', function() {
       });
     }
 
-    describe('when the session is authenticated', function() {
+    context('when the session is authenticated', function() {
       beforeEach(function() {
         this.authorizer.set('session.isAuthenticated', true);
       });
 
-      describe('when the session contains a non empty user_token and user_email', function() {
+      context('when the session contains a non empty token and user_email', function() {
         beforeEach(function() {
-          this.authorizer.set('session.user_token', 'secret token!');
+          this.authorizer.set('session.token', 'secret token!');
           this.authorizer.set('session.user_email', 'user@email.com');
         });
 
-        it('adds the "user_token" and "user_email" query string fields to the request', function() {
+        it('adds the "token" and "user_email" query string fields to the request', function() {
           this.authorizer.authorize(this.request, {});
 
-          expect(this.request.setRequestHeader).to.have.been.calledWith('Authorization', 'Token user_token="secret token!", user_email="user@email.com"');
+          expect(this.request.setRequestHeader).to.have.been.calledWith('Authorization', 'Token token="secret token!", user_email="user@email.com"');
         });
       });
 
-      describe('when custom identification and token attribute names are configured', function() {
+      context('when custom identification and token attribute names are configured', function() {
         beforeEach(function() {
           Configuration.tokenAttributeName          = 'employee_token';
           Configuration.identificationAttributeName = 'employee_email';
@@ -66,7 +66,7 @@ describe('Devise', function() {
           this.authorizer = Devise.create();
         });
 
-        describe('when the session contains a non empty employee_token and employee_email', function() {
+        context('when the session contains a non empty employee_token and employee_email', function() {
           beforeEach(function() {
             this.authorizer.set('session', this.session);
             this.authorizer.set('session.employee_token', 'secret token!');
@@ -85,15 +85,15 @@ describe('Devise', function() {
         });
       });
 
-      describe('when the session does not contain an user_token', function() {
+      context('when the session does not contain an token', function() {
         beforeEach(function() {
-          this.authorizer.set('session.user_token', null);
+          this.authorizer.set('session.token', null);
         });
 
         itDoesNotAuthorizeTheRequest();
       });
 
-      describe('when the session does not contain an user_email', function() {
+      context('when the session does not contain an user_email', function() {
         beforeEach(function() {
           this.authorizer.set('session.user_email', null);
         });
@@ -102,7 +102,7 @@ describe('Devise', function() {
       });
     });
 
-    describe('when the session is not authenticated', function() {
+    context('when the session is not authenticated', function() {
       beforeEach(function() {
         this.authorizer.set('session.isAuthenticated', false);
       });

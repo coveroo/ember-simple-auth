@@ -16,24 +16,17 @@ authorization mechanisms.
 
 * it __manages a client side session__ and synchronizes that across tabs/
   windows
-* it __authenticates users__ against the application's own server, external
+* it __authenticates the session__ against the application's own server, external
   providers like Facebook etc.
-* it __authorizes requests__ to the backend server
+* it __authorizes requests__ to backend servers
 * it is easily customizable and extensible
 
 ## How do I use it?
 
-Ember Simple Auth is built around the fundamental idea that __users are always
-using the application in the context of a (client side) session. This session
-can either be authenticated or not.__ Ember Simple Auth creates that session,
-provides functionality to authenticate and invalidate it and also has a set of
-mixins that provide default implementations for common scenarios like
-redirecting users to the login if they access a restricted page etc.
-
 _Ember Simple Auth can be used as a browserified version that exports a global
-as well as as an AMD build that can be used e.g. with or Ember CLI. This README
-covers usage with Ember CLI; using it with Ember App Kit or via the
-browserified distribution is analogous._
+as well as as an AMD build or an Ember CLI Addon. This README covers usage with
+Ember CLI; using it with Ember App Kit or via the browserified distribution is
+analogous._
 
 When Ember Simple Auth is included in an application (see the
 [Installation instructions](#installation) for documentation on the various
@@ -41,7 +34,16 @@ options for including it into all types of Ember applications), it registers an
 [initializer](http://emberjs.com/api/classes/Ember.Application.html#toc_initializers)
 named `'simple-auth'`. Once that initializer has run, the session (see the
 [API docs for `Session`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-Session))
-__will be available in all routes and controllers__ of the application.
+__will be available in all routes, controllers and components__ of the application.
+
+### The Session
+
+Ember Simple Auth is built around the fundamental idea that __users are always
+using the application in the context of a (client side) session. This session
+can either be authenticated or not.__ Ember Simple Auth creates that session,
+provides functionality to authenticate and invalidate it and also has a set of
+mixins that provide default implementations for common scenarios like
+redirecting users to the login if they access a restricted page etc.
 
 While not necessary, the easiest way to use the session is to include the
 `ApplicationRouteMixin` mixin provided by Ember Simple Auth in the
@@ -96,7 +98,19 @@ authenticated with one authenticator at a time (see the
 The authenticator to use is chosen when authentication is triggered:
 
 ```js
-this.get('session').authenticate('authenticator:custom', {});
+this.get('session').authenticate('authenticator:some', {});
+```
+
+or when using the
+[`LoginControllerMixin`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-LoginControllerMixin):
+
+```js
+// app/controllers/login.js
+import LoginControllerMixin from 'simple-auth/mixins/login-controller-mixin';
+
+export default Ember.Controller.extend(LoginControllerMixin, {
+  authenticator: 'authenticator:some'
+});
 ```
 
 Ember Simple Auth does not include any authenticators in the base library but
@@ -112,23 +126,22 @@ Besides the option to use one of the predefined authenticators from the
 extension libraries, it is easy to implement custom authenticators as well. All
 that is necessary is to extend the base authenticator and implement three
 methods (see the
-[API docs for `Authenticators.Base`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-Authenticators-Base)).
-
-__Custom authenticators have to be registered with Ember's dependency injection
-container__ so that the session can retrieve an instance, e.g.:
+[API docs for `Authenticators.Base`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-Authenticators-Base)),
+e.g.:
 
 ```js
+// app/authenticators/custom.js
 import Base from 'simple-auth/authenticators/base';
 
-var CustomAuthenticator = Base.extend({
-  …
-});
-
-Ember.Application.initializer({
-  name: 'authentication',
-  before: 'simple-auth',
-  initialize: function(container, application) {
-    container.register('authenticator:custom', CustomAuthenticator);
+export default Base.extend({
+  restore: function(data) {
+    …
+  },
+  authenticate: function(options) {
+    …
+  },
+  invalidate: function(data) {
+    …
   }
 });
 ```
@@ -141,7 +154,8 @@ registered factory's name to the session's `authenticate` method (see the
 this.get('session').authenticate('authenticator:custom', {});
 ```
 
-or when using one of the controller mixins:
+or when using the
+[`LoginControllerMixin`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-LoginControllerMixin):
 
 ```js
 // app/controllers/login.js
@@ -150,6 +164,23 @@ import LoginControllerMixin from 'simple-auth/mixins/login-controller-mixin';
 export default Ember.Controller.extend(LoginControllerMixin, {
   authenticator: 'authenticator:custom'
 });
+```
+
+**Note that when you're not using Ember CLI the authenticator will not be
+registered with the container automatically and you need to do that in an
+initializer:**
+
+```js
+// app/initializers/authentication.js
+import CustomAuthenticator from '../authenticators/custom';
+
+export default {
+  name:       'authentication',
+  before:     'simple-auth',
+  initialize: function(container, application) {
+    container.register('authenticator:custom', CustomAuthenticator);
+  }
+};
 ```
 
 Also see the
@@ -163,13 +194,13 @@ and
 If the Ember.js application makes requests to a backend server that requires
 authorization and an authorizer is configured, Ember Simple Auth sets up an
 [`$.ajaxPrefilter`](http://api.jquery.com/jQuery.ajaxPrefilter/) that is used
-to authorize AJAX requests. An authorizer can be configured in the global
-configuration object:
+to authorize AJAX requests. An authorizer can be configured in the application's
+environment object:
 
 ```js
 //config/environment.js
 ENV['simple-auth'] = {
-  authorizer: 'authorizer:custom'
+  authorizer: 'simple-auth-authorizer:oauth2-bearer'
 }
 ```
 
@@ -192,20 +223,13 @@ libraries, it is easy to implement custom authorizers as well. All you have to
 do is to extend the base authorizer and implement one method (see the
 [API docs for `Authorizers.Base`](http://ember-simple-auth.com/ember-simple-auth-api-docs.html#SimpleAuth-Authorizers-Base)).
 
-To use a custom authorizer, register it with Ember's container:
-
 ```js
+// app/authorizers/custom.js
 import Base from 'simple-auth/authorizers/base';
 
-var CustomAuthorizer = Base.extend({
-  …
-});
-
-Ember.Application.initializer({
-  name: 'authorization',
-  before: 'simple-auth',
-  initialize: function(container, application) {
-    container.register('authorizer:custom', CustomAuthorizer);
+export default Base.extend({
+  authorize: function(jqXHR, requestOptions) {
+    …
   }
 });
 ```
@@ -217,6 +241,23 @@ and configure it on the application's environment object:
 ENV['simple-auth'] = {
   authorizer: 'authorizer:custom'
 }
+```
+
+**Note that when you're not using Ember CLI the authorizer will not be
+registered with the container automatically and you need to do that in an
+initializer:**
+
+```js
+// app/initializers/authentication.js
+import CustomAuthorizer from '../authorizers/custom';
+
+export default {
+  name:       'authentication',
+  before:     'simple-auth',
+  initialize: function(container) {
+    container.register('authorizer:custom', CustomAuthorizer);
+  }
+};
 ```
 
 #### Cross Origin Authorization
@@ -241,8 +282,8 @@ course).
 ### Stores
 
 Ember Simple Auth __persists the session state so it survives page reloads__.
-There is only one store per application that can be configured in the global
-configuration object:
+There is only one store per application that can be configured in the application's
+environment object:
 
 ```js
 //config/environment.js
@@ -384,7 +425,10 @@ and then run the tests in the browser at
 
 ## License
 
-Ember Simple Auth is released under the
+Ember Simple Auth is developed by and &copy;
+[simplabs/Marco Otte-Witte](http://simplabs.com) and contributors. It is
+released under the
 [MIT License](https://github.com/simplabs/ember-simple-auth/blob/master/LICENSE).
-It is not an official part of Ember.js and is not maintained by the Ember.js
-Core Team.
+
+Ember Simple Auth is not an official part of [Ember.js](http://emberjs.com) and
+is not maintained by the Ember.js Core Team.
